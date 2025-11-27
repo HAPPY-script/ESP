@@ -1,3 +1,9 @@
+game.StarterGui:SetCore("SendNotification", {
+    Title = "ESP v0.02";
+    Text = "Good luck";
+    Duration = 5;
+})
+
 local ESPScreen = Instance.new("ScreenGui")
 ESPScreen.Name = "ESPScreen"
 ESPScreen.ResetOnSpawn = false
