@@ -368,7 +368,7 @@ ALL.Parent = ScrollingFrame
 
 --=======================================================================================================--
 
--- ESP + GUI bridge
+-- ESP + GUI bridge (with periodic refresh)
 -- Đặt LocalScript này trong StarterPlayerScripts / PlayerScripts
 
 local Players = game:GetService("Players")
@@ -408,13 +408,11 @@ local espNameEnabled = false
 local selectedTeamName = "ALL"
 local espColor = Color3.fromRGB(255,255,255)
 
+-- refresh interval (seconds)
+local refreshInterval = 10
+local isRefreshing = false
+
 -- table lưu object ESP cho mỗi player
--- espObjects[player] = {
---   highlight = Instance,
---   billboard = Instance,
---   healthConn = RBXScriptConnection,
---   charAddedConn = RBXScriptConnection
--- }
 local espObjects = {}
 
 -- ===== UI helpers =====
@@ -453,7 +451,14 @@ local function updateColorFromBoxes()
 		if obj.highlight and obj.highlight.Parent then
 			pcall(function()
 				obj.highlight.OutlineColor = espColor
+				obj.highlight.FillColor = espColor
 				-- keep fill transparent
+			end)
+		end
+		if obj.billboard and obj.billboard.Parent then
+			pcall(function()
+				local label = obj.billboard:FindFirstChild("ESP_Label")
+				if label then label.TextColor3 = espColor end
 			end)
 		end
 	end
@@ -491,10 +496,7 @@ local function buildTeamButtons()
 			SelectTeamFrame.Visible = false
 			Main.Visible = true
 			updateMainUI()
-			-- refresh ESP visibility
-			for plr,_ in pairs(espObjects) do
-				-- will be re-evaluated by updateESPForPlayer below
-			end
+			updateAllESP()
 		end)
 		idx = idx + 1
 	end
@@ -505,6 +507,7 @@ local function buildTeamButtons()
 		SelectTeamFrame.Visible = false
 		Main.Visible = true
 		updateMainUI()
+		updateAllESP()
 	end)
 end
 
@@ -530,7 +533,6 @@ local function shouldShowForPlayer(plr)
 	if not espEnabled then return false end
 	if plr == LocalPlayer then return false end
 	if selectedTeamName == "ALL" then return true end
-	-- if player has team and matches selectedTeamName
 	if plr.Team and plr.Team.Name == selectedTeamName then
 		return true
 	end
@@ -550,11 +552,8 @@ local function createESPForPlayer(plr)
 	-- Highlight (outline)
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "ESP_Highlight"
-	-- Attach to character or workspace; set Adornee to Model or part(s)
-	-- Using Adornee = character (works if Model accepted) else attach to primary part
 	pcall(function()
 		highlight.Parent = character
-		-- try set Adornee; if Model accepted:
 		if character:IsA("Model") then
 			highlight.Adornee = character
 		else
@@ -609,7 +608,6 @@ local function createESPForPlayer(plr)
 			healthText = " ["..tostring(h).."/"..tostring(mh).."]"
 		end
 		label.Text = (espNameEnabled and nameText or "") .. (espNameEnabled and espHPEnabled and " " or "") .. (espHPEnabled and healthText or (not espNameEnabled and espHPEnabled and "["..tostring(humanoid and math.floor(humanoid.Health+0.5) or 0).."]" or ""))
-		-- set color
 		label.TextColor3 = espColor
 	end
 
@@ -624,9 +622,7 @@ local function createESPForPlayer(plr)
 	-- Monitor head/HRP changes (if part changes, reattach billboard)
 	local charAddedConn
 	charAddedConn = character.ChildAdded:Connect(function(child)
-		-- if a head/HRP was added later, ensure billboard/adorn still valid
 		if child:IsA("BasePart") then
-			-- reassign Adornee if needed
 			if billboard and billboard.Parent then
 				local newAttach = getHeadOrHRP(character)
 				if newAttach then
@@ -635,7 +631,6 @@ local function createESPForPlayer(plr)
 				end
 			end
 		end
-		-- if humanoid created later, connect health
 		if child:IsA("Humanoid") and not healthConn then
 			healthConn = child.HealthChanged:Connect(updateLabel)
 			updateLabel()
@@ -668,13 +663,10 @@ end
 
 -- ===== Update / apply logic =====
 local function updateESPForPlayer(plr)
-	-- decide whether to show or hide
 	if shouldShowForPlayer(plr) then
-		-- create if missing
 		if not espObjects[plr] then
 			createESPForPlayer(plr)
 		else
-			-- ensure properties match (color, visibility, name/hp toggles)
 			local obj = espObjects[plr]
 			if obj.highlight then
 				pcall(function()
@@ -689,7 +681,6 @@ local function updateESPForPlayer(plr)
 				if label then
 					label.TextColor3 = espColor
 				end
-				-- update label text
 				local humanoid = plr.Character and plr.Character:FindFirstChildOfClass("Humanoid")
 				local nameText = plr.Name
 				local healthText = ""
@@ -710,7 +701,6 @@ local function updateESPForPlayer(plr)
 			end
 		end
 	else
-		-- should not show → destroy if exists
 		if espObjects[plr] then
 			destroyESPForPlayer(plr)
 		end
@@ -718,7 +708,7 @@ local function updateESPForPlayer(plr)
 end
 
 -- Update all players
-local function updateAllESP()
+function updateAllESP()
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
 			updateESPForPlayer(plr)
@@ -728,7 +718,6 @@ end
 
 -- ===== Hooks: player join/leave/respawn/team change =====
 Players.PlayerAdded:Connect(function(plr)
-	-- when join, wait char then update
 	plr.CharacterAdded:Connect(function()
 		task.wait(0.1)
 		updateESPForPlayer(plr)
@@ -739,14 +728,12 @@ Players.PlayerRemoving:Connect(function(plr)
 	destroyESPForPlayer(plr)
 end)
 
--- Also observe team changes for existing players
+-- Observe team changes
 Players.PlayerAdded:Connect(function(plr)
 	plr:GetPropertyChangedSignal("Team"):Connect(function()
-		-- team changed → update visibility for that player
 		updateESPForPlayer(plr)
 	end)
 end)
--- For existing players
 for _, plr in ipairs(Players:GetPlayers()) do
 	plr:GetPropertyChangedSignal("Team"):Connect(function()
 		updateESPForPlayer(plr)
@@ -777,25 +764,11 @@ SelectTeamBtn.MouseButton1Click:Connect(function()
 	SelectTeamFrame.Visible = true
 end)
 
--- Mode: when user chooses team via built buttons (handled in buildTeamButtons),
--- those buttons call updateMainUI() — we need to refresh ESP after buildTeamButtons sets selectedTeamName
--- RebuildTeamButtons already sets selectedTeamName and updateMainUI; ensure ESP updated later:
 TeamsService.ChildAdded:Connect(function() task.wait(0.1); updateAllESP() end)
 TeamsService.ChildRemoved:Connect(function() task.wait(0.1); updateAllESP() end)
 
--- When user changes color via panels
-local oldUpdate = updateColorFromBoxes
--- updateColorFromBoxes already updates highlight color live; ensure billboard color update as well
--- (we already looped through espObjects inside updateColorFromBoxes)
-
--- When user changes selection (SelectTeam buttons already set selectedTeamName), ensure updateAllESP() is called.
--- (Buttons inside buildTeamButtons set selectedTeamName then updateMainUI; call updateAllESP() now)
--- We add a small wrapper to ensure updateAllESP runs after team selection:
--- (the cloned buttons already set selectedTeamName and updateMainUI; but might not call updateAllESP, so we'll ensure generic update on Return to main)
+-- Ensure templateAll returns main update
 templateAll.MouseButton1Click:Connect(function() updateAllESP() end)
-
--- Add a small hook when SelectTeamFrame closes to refresh
--- (We already call updateAllESP in team button handlers above.)
 
 -- Initialize defaults & UI
 espEnabled = false
@@ -811,3 +784,23 @@ SelectTeamFrame.Visible = false
 
 -- Quick apply in case some toggles are on at startup
 updateAllESP()
+
+-- ===== Periodic refresh logic (force re-scan every refreshInterval seconds) =====
+spawn(function()
+	while true do
+		task.wait(refreshInterval)
+		-- only do periodic refresh when ESP is enabled and not already refreshing
+		if espEnabled and not isRefreshing then
+			isRefreshing = true
+			-- destroy all current ESP objects (simulate turning off)
+			for plr, _ in pairs(espObjects) do
+				destroyESPForPlayer(plr)
+			end
+			-- tiny wait to let game settle
+			task.wait(0.05)
+			-- re-apply ESP (simulate turning on)
+			updateAllESP()
+			isRefreshing = false
+		end
+	end
+end)
