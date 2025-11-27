@@ -1,9 +1,3 @@
-game.StarterGui:SetCore("SendNotification", {
-    Title = "ESP Player";
-    Text = "Good Luck";
-    Duration = 5;
-})
-
 local ESPScreen = Instance.new("ScreenGui")
 ESPScreen.Name = "ESPScreen"
 ESPScreen.ResetOnSpawn = false
@@ -349,6 +343,7 @@ ScrollingFrame.BorderColor3 = Color3.new(0, 0, 0)
 ScrollingFrame.AnchorPoint = Vector2.new(0.5, 0)
 ScrollingFrame.Transparency = 1
 ScrollingFrame.Active = true
+ScrollingFrame.CanvasSize = UDim2.new(0, 0, 5, 0)
 ScrollingFrame.ScrollBarImageColor3 = Color3.new(0, 0, 0)
 ScrollingFrame.ScrollBarThickness = 7
 ScrollingFrame.Parent = SelectTeamFrame
@@ -356,13 +351,13 @@ ScrollingFrame.Parent = SelectTeamFrame
 local ALL = Instance.new("TextButton")
 ALL.Name = "ALL"
 ALL.Position = UDim2.new(0.5, 0, 0, 0)
-ALL.Size = UDim2.new(0.75, 0, 0.1, 0)
+ALL.Size = UDim2.new(0.75, 0, 0.04, 0)
 ALL.BackgroundColor3 = Color3.new(1, 0, 1)
 ALL.BackgroundTransparency = 0.75
 ALL.BorderSizePixel = 0
 ALL.BorderColor3 = Color3.new(0, 0, 0)
 ALL.AnchorPoint = Vector2.new(0.5, 0)
-ALL.TextTransparency = 0
+ALL.Transparency = 0.75
 ALL.Text = "ALL"
 ALL.TextColor3 = Color3.new(1, 1, 1)
 ALL.TextSize = 14
@@ -371,7 +366,7 @@ ALL.TextScaled = true
 ALL.TextWrapped = true
 ALL.Parent = ScrollingFrame
 
---======================================================================================
+--=======================================================================================================--
 
 -- ESP + GUI bridge
 -- Đặt LocalScript này trong StarterPlayerScripts / PlayerScripts
@@ -486,7 +481,7 @@ local function buildTeamButtons()
 		local cloned = templateAll:Clone()
 		cloned.Name = team.Name
 		cloned.Text = team.Name
-		local newYScale = basePos.Y.Scale + 0.125 * idx
+		local newYScale = basePos.Y.Scale + 0.05 * idx
 		cloned.Position = UDim2.new(basePos.X.Scale, basePos.X.Offset, newYScale, basePos.Y.Offset)
 		cloned.Parent = Scrolling
 		cloned.Visible = true
