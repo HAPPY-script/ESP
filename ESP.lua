@@ -1,9 +1,3 @@
-game.StarterGui:SetCore("SendNotification", {
-    Title = "ESP v0.02";
-    Text = "Good luck";
-    Duration = 5;
-})
-
 local ESPScreen = Instance.new("ScreenGui")
 ESPScreen.Name = "ESPScreen"
 ESPScreen.ResetOnSpawn = false
@@ -286,6 +280,32 @@ ESPHP.TextScaled = true
 ESPHP.TextWrapped = true
 ESPHP.Parent = Main
 
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Position = UDim2.new(0.975, 0, 0.025, 0)
+CloseButton.Size = UDim2.new(0.175, 0, 0.175, 0)
+CloseButton.BackgroundColor3 = Color3.new(0.745098, 0, 0)
+CloseButton.BorderSizePixel = 0
+CloseButton.BorderColor3 = Color3.new(0, 0, 0)
+CloseButton.AnchorPoint = Vector2.new(0.5, 0.5)
+CloseButton.Text = "Close"
+CloseButton.TextColor3 = Color3.new(1, 1, 1)
+CloseButton.TextSize = 14
+CloseButton.FontFace = Font.new("rbxasset://fonts/families/HighwayGothic.json", Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+CloseButton.TextScaled = true
+CloseButton.TextWrapped = true
+CloseButton.Parent = Main
+
+local UICorner3 = Instance.new("UICorner")
+UICorner3.Name = "UICorner"
+UICorner3.CornerRadius = UDim.new(1, 0)
+UICorner3.Parent = CloseButton
+
+local UIAspectRatioConstraint6 = Instance.new("UIAspectRatioConstraint")
+UIAspectRatioConstraint6.Name = "UIAspectRatioConstraint"
+UIAspectRatioConstraint6.AspectRatio = 1.5
+UIAspectRatioConstraint6.Parent = CloseButton
+
 local SelectTeamFrame = Instance.new("Frame")
 SelectTeamFrame.Name = "SelectTeamFrame"
 SelectTeamFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -299,15 +319,15 @@ SelectTeamFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 SelectTeamFrame.Transparency = 0.10000000149011612
 SelectTeamFrame.Parent = ESPScreen
 
-local UIAspectRatioConstraint6 = Instance.new("UIAspectRatioConstraint")
-UIAspectRatioConstraint6.Name = "UIAspectRatioConstraint"
-UIAspectRatioConstraint6.AspectRatio = 1.5
-UIAspectRatioConstraint6.Parent = SelectTeamFrame
+local UIAspectRatioConstraint7 = Instance.new("UIAspectRatioConstraint")
+UIAspectRatioConstraint7.Name = "UIAspectRatioConstraint"
+UIAspectRatioConstraint7.AspectRatio = 1.5
+UIAspectRatioConstraint7.Parent = SelectTeamFrame
 
-local UICorner3 = Instance.new("UICorner")
-UICorner3.Name = "UICorner"
-UICorner3.CornerRadius = UDim.new(0.05, 0)
-UICorner3.Parent = SelectTeamFrame
+local UICorner4 = Instance.new("UICorner")
+UICorner4.Name = "UICorner"
+UICorner4.CornerRadius = UDim.new(0.05, 0)
+UICorner4.Parent = SelectTeamFrame
 
 local UIStroke5 = Instance.new("UIStroke")
 UIStroke5.Name = "UIStroke"
@@ -324,7 +344,7 @@ Title4.BackgroundTransparency = 1
 Title4.BorderSizePixel = 0
 Title4.BorderColor3 = Color3.new(0, 0, 0)
 Title4.AnchorPoint = Vector2.new(0.5, 0)
-Title4.TextTransparency = 0
+Title4.Transparency = 1
 Title4.Text = "Select Team"
 Title4.TextColor3 = Color3.new(1, 1, 1)
 Title4.TextSize = 14
@@ -363,7 +383,7 @@ ALL.BackgroundTransparency = 0.75
 ALL.BorderSizePixel = 0
 ALL.BorderColor3 = Color3.new(0, 0, 0)
 ALL.AnchorPoint = Vector2.new(0.5, 0)
-ALL.Transparency = 0.75
+ALL.TextTransparency = 0
 ALL.Text = "ALL"
 ALL.TextColor3 = Color3.new(1, 1, 1)
 ALL.TextSize = 14
@@ -372,10 +392,7 @@ ALL.TextScaled = true
 ALL.TextWrapped = true
 ALL.Parent = ScrollingFrame
 
---=======================================================================================================--
-
--- ESP + GUI bridge (with periodic refresh)
--- Đặt LocalScript này trong StarterPlayerScripts / PlayerScripts
+--========================================================================================================================================--
 
 local Players = game:GetService("Players")
 local TeamsService = game:GetService("Teams")
@@ -394,6 +411,7 @@ local Button = Main:WaitForChild("Button")           -- ESP ON/OFF
 local ESPHP = Main:WaitForChild("ESPHP")           -- HP toggle
 local ESPName = Main:WaitForChild("ESPName")       -- Name toggle
 local SelectTeamBtn = Main:WaitForChild("SelectTeam")
+local CloseButton = Main:FindFirstChild("CloseButton")
 
 local SelectColor = Main:WaitForChild("SelectColor")
 local RBox = SelectColor:WaitForChild("R")
@@ -421,8 +439,14 @@ local isRefreshing = false
 -- table lưu object ESP cho mỗi player
 local espObjects = {}
 
+-- termination + connection storage
+local terminated = false
+local conns = {}         -- top-level connections
+local playerConns = {}   -- per-player connection tables keyed by User
+
 -- ===== UI helpers =====
 local function setButtonState(btn, onText, offText, isOn)
+	if not btn then return end
 	if isOn then
 		btn.Text = onText
 		btn.BackgroundColor3 = Color3.fromRGB(50,255,50)
@@ -433,6 +457,7 @@ local function setButtonState(btn, onText, offText, isOn)
 end
 
 local function updateMainUI()
+	if terminated then return end
 	setButtonState(Button, "ON", "OFF", espEnabled)
 	setButtonState(ESPHP, "HP: ON", "HP: OFF", espHPEnabled)
 	setButtonState(ESPName, "Name: ON", "Name: OFF", espNameEnabled)
@@ -447,6 +472,7 @@ local function parse255(s)
 end
 
 local function updateColorFromBoxes()
+	if terminated then return end
 	local r = parse255(RBox.Text)
 	local g = parse255(GBox.Text)
 	local b = parse255(BBox.Text)
@@ -458,7 +484,7 @@ local function updateColorFromBoxes()
 			pcall(function()
 				obj.highlight.OutlineColor = espColor
 				obj.highlight.FillColor = espColor
-				-- keep fill transparent
+				obj.highlight.FillTransparency = 1
 			end)
 		end
 		if obj.billboard and obj.billboard.Parent then
@@ -470,9 +496,10 @@ local function updateColorFromBoxes()
 	end
 end
 
-RBox.FocusLost:Connect(updateColorFromBoxes)
-GBox.FocusLost:Connect(updateColorFromBoxes)
-BBox.FocusLost:Connect(updateColorFromBoxes)
+-- wire RGB FocusLost and store connections so we can disconnect later
+conns.rConn = RBox.FocusLost:Connect(updateColorFromBoxes)
+conns.gConn = GBox.FocusLost:Connect(updateColorFromBoxes)
+conns.bConn = BBox.FocusLost:Connect(updateColorFromBoxes)
 
 -- ===== Team list builder =====
 local function clearTeamButtonsKeepTemplate()
@@ -484,6 +511,7 @@ local function clearTeamButtonsKeepTemplate()
 end
 
 local function buildTeamButtons()
+	if terminated then return end
 	local basePos = templateAll.Position
 	clearTeamButtonsKeepTemplate()
 	templateAll.Visible = true
@@ -497,7 +525,8 @@ local function buildTeamButtons()
 		cloned.Parent = Scrolling
 		cloned.Visible = true
 		local teamName = team.Name
-		cloned.MouseButton1Click:Connect(function()
+		conns["teamBtn_"..teamName] = cloned.MouseButton1Click:Connect(function()
+			if terminated then return end
 			selectedTeamName = teamName or "ALL"
 			SelectTeamFrame.Visible = false
 			Main.Visible = true
@@ -508,17 +537,21 @@ local function buildTeamButtons()
 	end
 
 	-- ALL button
-	templateAll.MouseButton1Click:Connect(function()
-		selectedTeamName = "ALL"
-		SelectTeamFrame.Visible = false
-		Main.Visible = true
-		updateMainUI()
-		updateAllESP()
-	end)
+	if templateAll then
+		if conns.templateAllConn then pcall(function() conns.templateAllConn:Disconnect() end) end
+		conns.templateAllConn = templateAll.MouseButton1Click:Connect(function()
+			if terminated then return end
+			selectedTeamName = "ALL"
+			SelectTeamFrame.Visible = false
+			Main.Visible = true
+			updateMainUI()
+			updateAllESP()
+		end)
+	end
 end
 
-TeamsService.ChildAdded:Connect(function() task.wait(0.05); buildTeamButtons() end)
-TeamsService.ChildRemoved:Connect(function() task.wait(0.05); buildTeamButtons() end)
+conns.teamsAdded = TeamsService.ChildAdded:Connect(function() if terminated then return end; task.wait(0.05); buildTeamButtons() end)
+conns.teamsRemoved = TeamsService.ChildRemoved:Connect(function() if terminated then return end; task.wait(0.05); buildTeamButtons() end)
 buildTeamButtons()
 
 -- ===== Utility: which part to attach Billboard/Highlight =====
@@ -528,7 +561,6 @@ local function getHeadOrHRP(character)
 	if head and head:IsA("BasePart") then return head end
 	local hrp = character:FindFirstChild("HumanoidRootPart") or character:FindFirstChild("UpperTorso") or character:FindFirstChild("LowerTorso") or character:FindFirstChild("Torso")
 	if hrp and hrp:IsA("BasePart") then return hrp end
-	-- fallback: any BasePart inside character
 	for _, c in ipairs(character:GetChildren()) do
 		if c:IsA("BasePart") then return c end
 	end
@@ -547,31 +579,25 @@ end
 
 -- ===== Create / Destroy ESP for a player =====
 local function createESPForPlayer(plr)
+	if terminated then return end
 	if not plr or not plr.Character then return end
-	-- avoid duplicate
 	if espObjects[plr] then return end
 
 	local character = plr.Character
 	local attachPart = getHeadOrHRP(character)
 	if not attachPart then return end
 
-	-- Highlight (outline)
 	local highlight = Instance.new("Highlight")
 	highlight.Name = "ESP_Highlight"
 	pcall(function()
 		highlight.Parent = character
-		if character:IsA("Model") then
-			highlight.Adornee = character
-		else
-			highlight.Adornee = attachPart
-		end
+		highlight.Adornee = character
 		highlight.OutlineColor = espColor
 		highlight.FillColor = espColor
-		highlight.FillTransparency = 1 -- only outline
+		highlight.FillTransparency = 1
 		highlight.Enabled = true
 	end)
 
-	-- BillboardGui for name/HP
 	local billboard
 	local function createBillboard()
 		local headPart = getHeadOrHRP(character)
@@ -596,10 +622,8 @@ local function createESPForPlayer(plr)
 		return billboard
 	end
 
-	-- create billboard now (maybe head exists)
 	createBillboard()
 
-	-- Health update connection
 	local healthConn
 	local function updateLabel()
 		if not billboard or not billboard.Parent then return end
@@ -617,17 +641,17 @@ local function createESPForPlayer(plr)
 		label.TextColor3 = espColor
 	end
 
-	-- connect health change to keep HP updated
 	local humanoid = character:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		healthConn = humanoid.HealthChanged:Connect(function()
+			if terminated then return end
 			updateLabel()
 		end)
 	end
 
-	-- Monitor head/HRP changes (if part changes, reattach billboard)
 	local charAddedConn
 	charAddedConn = character.ChildAdded:Connect(function(child)
+		if terminated then return end
 		if child:IsA("BasePart") then
 			if billboard and billboard.Parent then
 				local newAttach = getHeadOrHRP(character)
@@ -638,12 +662,14 @@ local function createESPForPlayer(plr)
 			end
 		end
 		if child:IsA("Humanoid") and not healthConn then
-			healthConn = child.HealthChanged:Connect(updateLabel)
+			healthConn = child.HealthChanged:Connect(function()
+				if terminated then return end
+				updateLabel()
+			end)
 			updateLabel()
 		end
 	end)
 
-	-- store
 	espObjects[plr] = {
 		highlight = highlight,
 		billboard = billboard,
@@ -651,7 +677,6 @@ local function createESPForPlayer(plr)
 		charAddedConn = charAddedConn
 	}
 
-	-- initial update + visibility
 	updateLabel()
 end
 
@@ -669,6 +694,7 @@ end
 
 -- ===== Update / apply logic =====
 local function updateESPForPlayer(plr)
+	if terminated then return end
 	if shouldShowForPlayer(plr) then
 		if not espObjects[plr] then
 			createESPForPlayer(plr)
@@ -713,8 +739,8 @@ local function updateESPForPlayer(plr)
 	end
 end
 
--- Update all players
 function updateAllESP()
+	if terminated then return end
 	for _, plr in ipairs(Players:GetPlayers()) do
 		if plr ~= LocalPlayer then
 			updateESPForPlayer(plr)
@@ -722,59 +748,91 @@ function updateAllESP()
 	end
 end
 
--- ===== Hooks: player join/leave/respawn/team change =====
-Players.PlayerAdded:Connect(function(plr)
-	plr.CharacterAdded:Connect(function()
+-- ===== Hooks: player join/leave/respawn/team change (managed connections) =====
+local function connectPlayerHandlers(plr)
+	if not plr then return end
+	playerConns[plr.UserId] = playerConns[plr.UserId] or {}
+
+	-- CharacterAdded
+	if playerConns[plr.UserId].charConn then
+		pcall(function() playerConns[plr.UserId].charConn:Disconnect() end)
+	end
+	playerConns[plr.UserId].charConn = plr.CharacterAdded:Connect(function()
+		if terminated then return end
 		task.wait(0.1)
 		updateESPForPlayer(plr)
 	end)
-end)
 
-Players.PlayerRemoving:Connect(function(plr)
-	destroyESPForPlayer(plr)
-end)
-
--- Observe team changes
-Players.PlayerAdded:Connect(function(plr)
-	plr:GetPropertyChangedSignal("Team"):Connect(function()
-		updateESPForPlayer(plr)
-	end)
-end)
-for _, plr in ipairs(Players:GetPlayers()) do
-	plr:GetPropertyChangedSignal("Team"):Connect(function()
+	-- Team change
+	if playerConns[plr.UserId].teamConn then
+		pcall(function() playerConns[plr.UserId].teamConn:Disconnect() end)
+	end
+	playerConns[plr.UserId].teamConn = plr:GetPropertyChangedSignal("Team"):Connect(function()
+		if terminated then return end
 		updateESPForPlayer(plr)
 	end)
 end
 
+-- connect existing players
+for _, plr in ipairs(Players:GetPlayers()) do
+	if plr ~= LocalPlayer then
+		connectPlayerHandlers(plr)
+	end
+end
+
+conns.playerAdded = Players.PlayerAdded:Connect(function(plr)
+	if terminated then return end
+	if plr ~= LocalPlayer then
+		connectPlayerHandlers(plr)
+		-- ensure we update for new player
+		task.wait(0.1)
+		updateESPForPlayer(plr)
+	end
+end)
+
+conns.playerRemoving = Players.PlayerRemoving:Connect(function(plr)
+	-- destroy any ESP
+	destroyESPForPlayer(plr)
+	-- cleanup per-player conns
+	local pc = playerConns[plr.UserId]
+	if pc then
+		if pc.charConn then pcall(function() pc.charConn:Disconnect() end) end
+		if pc.teamConn then pcall(function() pc.teamConn:Disconnect() end) end
+		playerConns[plr.UserId] = nil
+	end
+end)
+
+-- Observe team add/remove already connected above (conns.teamsAdded/Removed)
+
 -- ===== UI events hooking (toggle + selection) =====
-Button.MouseButton1Click:Connect(function()
+conns.buttonConn = Button.MouseButton1Click:Connect(function()
+	if terminated then return end
 	espEnabled = not espEnabled
 	updateMainUI()
 	updateAllESP()
 end)
 
-ESPHP.MouseButton1Click:Connect(function()
+conns.hpConn = ESPHP.MouseButton1Click:Connect(function()
+	if terminated then return end
 	espHPEnabled = not espHPEnabled
 	updateMainUI()
 	updateAllESP()
 end)
 
-ESPName.MouseButton1Click:Connect(function()
+conns.nameConn = ESPName.MouseButton1Click:Connect(function()
+	if terminated then return end
 	espNameEnabled = not espNameEnabled
 	updateMainUI()
 	updateAllESP()
 end)
 
-SelectTeamBtn.MouseButton1Click:Connect(function()
+conns.selectTeamConn = SelectTeamBtn.MouseButton1Click:Connect(function()
+	if terminated then return end
 	Main.Visible = false
 	SelectTeamFrame.Visible = true
 end)
 
-TeamsService.ChildAdded:Connect(function() task.wait(0.1); updateAllESP() end)
-TeamsService.ChildRemoved:Connect(function() task.wait(0.1); updateAllESP() end)
-
--- Ensure templateAll returns main update
-templateAll.MouseButton1Click:Connect(function() updateAllESP() end)
+-- templateAll already wired in buildTeamButtons
 
 -- Initialize defaults & UI
 espEnabled = false
@@ -792,21 +850,54 @@ SelectTeamFrame.Visible = false
 updateAllESP()
 
 -- ===== Periodic refresh logic (force re-scan every refreshInterval seconds) =====
-spawn(function()
+conns.refreshLoop = task.spawn(function()
 	while true do
+		if terminated then break end
 		task.wait(refreshInterval)
-		-- only do periodic refresh when ESP is enabled and not already refreshing
+		if terminated then break end
 		if espEnabled and not isRefreshing then
 			isRefreshing = true
-			-- destroy all current ESP objects (simulate turning off)
 			for plr, _ in pairs(espObjects) do
 				destroyESPForPlayer(plr)
 			end
-			-- tiny wait to let game settle
 			task.wait(0.05)
-			-- re-apply ESP (simulate turning on)
+			if terminated then break end
 			updateAllESP()
 			isRefreshing = false
 		end
 	end
 end)
+
+-- ===== CloseButton: stop system, cleanup, destroy GUI =====
+if CloseButton and CloseButton.MouseButton1Click then
+	conns.closeConn = CloseButton.MouseButton1Click:Connect(function()
+		if terminated then return end
+		terminated = true
+
+		-- immediate disable
+		espEnabled = false
+
+		-- destroy all ESP objects
+		for plr, _ in pairs(espObjects) do
+			destroyESPForPlayer(plr)
+		end
+
+		-- disconnect per-player conns
+		for uid, pc in pairs(playerConns) do
+			if pc.charConn then pcall(function() pc.charConn:Disconnect() end) end
+			if pc.teamConn then pcall(function() pc.teamConn:Disconnect() end) end
+			playerConns[uid] = nil
+		end
+
+		-- disconnect top-level conns
+		for name, c in pairs(conns) do
+			if c and typeof(c) == "RBXScriptConnection" then
+				pcall(function() c:Disconnect() end)
+			end
+			conns[name] = nil
+		end
+
+		-- final destroy ScreenGui
+		pcall(function() Screen:Destroy() end)
+	end)
+end
