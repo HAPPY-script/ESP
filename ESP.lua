@@ -431,6 +431,7 @@ local espHPEnabled = false
 local espNameEnabled = false
 local selectedTeamName = "ALL"
 local espColor = Color3.fromRGB(255,255,255)
+local scaleMode = false -- chế độ BillboardGui scale theo khoảng cách
 
 -- refresh interval (seconds)
 local refreshInterval = 10
@@ -606,7 +607,11 @@ local function createESPForPlayer(plr)
 		billboard.Name = "ESP_Billboard"
 		billboard.Adornee = headPart
 		billboard.AlwaysOnTop = true
-		billboard.Size = UDim2.new(0, 150, 0, 40)
+		if scaleMode then
+			billboard.Size = UDim2.new(4,0,1,0) -- scale mode (xa sẽ nhỏ)
+		else
+			billboard.Size = UDim2.new(0,150,0,40) -- pixel mode (xa vẫn to)
+		end
 		billboard.StudsOffset = Vector3.new(0, 1.5, 0)
 		billboard.Parent = character
 
@@ -805,11 +810,41 @@ end)
 -- Observe team add/remove already connected above (conns.teamsAdded/Removed)
 
 -- ===== UI events hooking (toggle + selection) =====
-conns.buttonConn = Button.MouseButton1Click:Connect(function()
+local holdStart = 0
+local holding = false
+
+Button.MouseButton1Down:Connect(function()
 	if terminated then return end
-	espEnabled = not espEnabled
-	updateMainUI()
-	updateAllESP()
+	holding = true
+	holdStart = tick()
+
+	task.spawn(function()
+		while holding do
+			if tick() - holdStart >= 3 then
+				scaleMode = not scaleMode
+				holding = false
+				updateAllESP()
+				print("ESP ScaleMode:", scaleMode)
+				return
+			end
+			task.wait()
+		end
+	end)
+end)
+
+Button.MouseButton1Up:Connect(function()
+	if terminated then return end
+
+	if holding then
+		if tick() - holdStart < 3 then
+			-- click bình thường
+			espEnabled = not espEnabled
+			updateMainUI()
+			updateAllESP()
+		end
+	end
+
+	holding = false
 end)
 
 conns.hpConn = ESPHP.MouseButton1Click:Connect(function()
