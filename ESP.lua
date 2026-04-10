@@ -429,11 +429,15 @@ end
 local espEnabled = false
 local espHPEnabled = false
 local espNameEnabled = false
-local selectedTeamName = "ALL"
-local espColor = Color3.fromRGB(255,255,255)
+
+local selectedTeam = nil -- nil = ALL
+local teamButtonConns = {}
+local teamWatchConns = {}
+local teamRefreshQueued = false
+
+local espColor = Color3.fromRGB(255, 255, 255)
 
 local scaleMode = false
-
 local refreshInterval = 10
 local isRefreshing = false
 
@@ -454,19 +458,36 @@ local function setButtonState(btn, onText, offText, isOn)
 	if not btn then return end
 	if isOn then
 		btn.Text = onText
-		btn.BackgroundColor3 = Color3.fromRGB(50,255,50)
+		btn.BackgroundColor3 = Color3.fromRGB(50, 255, 50)
 	else
 		btn.Text = offText
-		btn.BackgroundColor3 = Color3.fromRGB(255,50,50)
+		btn.BackgroundColor3 = Color3.fromRGB(255, 50, 50)
 	end
+end
+
+local function getReadableTextColor(bg)
+	local lum = (bg.R * 255 * 0.299) + (bg.G * 255 * 0.587) + (bg.B * 255 * 0.114)
+	return lum > 186 and Color3.fromRGB(25, 25, 25) or Color3.fromRGB(255, 255, 255)
 end
 
 local function updateMainUI()
 	if terminated then return end
+
 	setButtonState(Button, "ON", "OFF", espEnabled)
 	setButtonState(ESPHP, "HP: ON", "HP: OFF", espHPEnabled)
 	setButtonState(ESPName, "Name: ON", "Name: OFF", espNameEnabled)
-	SelectTeamBtn.Text = selectedTeamName or "ALL"
+
+	local teamColor = Color3.fromRGB(80, 80, 80)
+	if selectedTeam and selectedTeam.Parent == TeamsService then
+		SelectTeamBtn.Text = selectedTeam.Name
+		teamColor = selectedTeam.TeamColor.Color
+	else
+		SelectTeamBtn.Text = "ALL"
+		selectedTeam = nil
+	end
+
+	SelectTeamBtn.BackgroundColor3 = teamColor
+	SelectTeamBtn.TextColor3 = getReadableTextColor(teamColor)
 	ViewColor.BackgroundColor3 = espColor
 end
 
@@ -478,10 +499,12 @@ end
 
 local function updateColorFromBoxes()
 	if terminated then return end
+
 	local r = parse255(RBox.Text)
 	local g = parse255(GBox.Text)
 	local b = parse255(BBox.Text)
-	espColor = Color3.fromRGB(r,g,b)
+
+	espColor = Color3.fromRGB(r, g, b)
 	ViewColor.BackgroundColor3 = espColor
 
 	for _, obj in pairs(espObjects) do
@@ -510,64 +533,128 @@ conns.bConn = BBox.FocusLost:Connect(updateColorFromBoxes)
 -- ===== Team list builder =====
 local function clearTeamButtonsKeepTemplate()
 	for _, child in ipairs(Scrolling:GetChildren()) do
-		if child:IsA("TextButton") and child.Name ~= "ALL" then
+		if child:IsA("TextButton") and child ~= templateAll then
 			child:Destroy()
 		end
 	end
 end
 
-local function buildTeamButtons()
+local function disconnectTeamConns()
+	for _, c in pairs(teamButtonConns) do
+		if c then pcall(function() c:Disconnect() end) end
+	end
+	table.clear(teamButtonConns)
+
+	for _, list in pairs(teamWatchConns) do
+		for _, c in ipairs(list) do
+			if c then pcall(function() c:Disconnect() end) end
+		end
+	end
+	table.clear(teamWatchConns)
+end
+
+local buildTeamButtons
+
+local function queueTeamRefresh()
+	if terminated or teamRefreshQueued then return end
+	teamRefreshQueued = true
+
+	task.defer(function()
+		task.wait(0.03)
+		teamRefreshQueued = false
+		if not terminated then
+			buildTeamButtons()
+		end
+	end)
+end
+
+buildTeamButtons = function()
 	if terminated then return end
-	local basePos = templateAll.Position
+
+	if selectedTeam and selectedTeam.Parent ~= TeamsService then
+		selectedTeam = nil
+	end
+
+	disconnectTeamConns()
 	clearTeamButtonsKeepTemplate()
+
 	templateAll.Visible = true
+	templateAll.BackgroundColor3 = Color3.fromRGB(80, 80, 80)
+	templateAll.TextColor3 = Color3.fromRGB(255, 255, 255)
+
+	local basePos = templateAll.Position
+	local teams = {}
+
+	for _, child in ipairs(TeamsService:GetChildren()) do
+		if child:IsA("Team") then
+			table.insert(teams, child)
+		end
+	end
+
+	table.sort(teams, function(a, b)
+		return a.Name:lower() < b.Name:lower()
+	end)
 
 	local idx = 1
-	for _, team in ipairs(TeamsService:GetTeams()) do
+	for _, team in ipairs(teams) do
 		local cloned = templateAll:Clone()
-		cloned.Name = team.Name
+		cloned.Name = "Team_" .. team.Name
 		cloned.Text = team.Name
+		cloned.BackgroundColor3 = team.TeamColor.Color
+		cloned.TextColor3 = getReadableTextColor(cloned.BackgroundColor3)
+
 		local newYScale = basePos.Y.Scale + 0.05 * idx
 		cloned.Position = UDim2.new(basePos.X.Scale, basePos.X.Offset, newYScale, basePos.Y.Offset)
 		cloned.Parent = Scrolling
 		cloned.Visible = true
 
-		local teamName = team.Name
-		conns["teamBtn_"..teamName] = cloned.MouseButton1Click:Connect(function()
+		teamButtonConns[team] = cloned.MouseButton1Click:Connect(function()
 			if terminated then return end
-			selectedTeamName = teamName or "ALL"
+			selectedTeam = (team.Parent == TeamsService) and team or nil
 			SelectTeamFrame.Visible = false
 			Main.Visible = true
 			updateMainUI()
 			updateAllESP()
 		end)
+
+		teamWatchConns[team] = {
+			team:GetPropertyChangedSignal("Name"):Connect(queueTeamRefresh),
+			team:GetPropertyChangedSignal("TeamColor"):Connect(queueTeamRefresh),
+			team.AncestryChanged:Connect(function(_, parent)
+				if parent ~= TeamsService then
+					queueTeamRefresh()
+				end
+			end)
+		}
 
 		idx += 1
 	end
 
-	if templateAll then
-		if conns.templateAllConn then pcall(function() conns.templateAllConn:Disconnect() end) end
-		conns.templateAllConn = templateAll.MouseButton1Click:Connect(function()
-			if terminated then return end
-			selectedTeamName = "ALL"
-			SelectTeamFrame.Visible = false
-			Main.Visible = true
-			updateMainUI()
-			updateAllESP()
-		end)
+	if conns.templateAllConn then
+		pcall(function() conns.templateAllConn:Disconnect() end)
 	end
+
+	conns.templateAllConn = templateAll.MouseButton1Click:Connect(function()
+		if terminated then return end
+		selectedTeam = nil
+		SelectTeamFrame.Visible = false
+		Main.Visible = true
+		updateMainUI()
+		updateAllESP()
+	end)
+
+	updateMainUI()
+	updateAllESP()
 end
 
 conns.teamsAdded = TeamsService.ChildAdded:Connect(function()
 	if terminated then return end
-	task.wait(0.05)
-	buildTeamButtons()
+	queueTeamRefresh()
 end)
 
 conns.teamsRemoved = TeamsService.ChildRemoved:Connect(function()
 	if terminated then return end
-	task.wait(0.05)
-	buildTeamButtons()
+	queueTeamRefresh()
 end)
 
 buildTeamButtons()
@@ -575,6 +662,7 @@ buildTeamButtons()
 -- ===== Utility =====
 local function getHeadOrHRP(character)
 	if not character then return nil end
+
 	local head = character:FindFirstChild("Head")
 	if head and head:IsA("BasePart") then return head end
 
@@ -590,14 +678,15 @@ local function getHeadOrHRP(character)
 			return c
 		end
 	end
+
 	return nil
 end
 
 local function shouldShowForPlayer(plr)
 	if not espEnabled then return false end
 	if plr == LocalPlayer then return false end
-	if selectedTeamName == "ALL" then return true end
-	return plr.Team and plr.Team.Name == selectedTeamName
+	if not selectedTeam then return true end
+	return plr.Team == selectedTeam
 end
 
 local function applyBillboardMode(obj)
@@ -796,6 +885,7 @@ local function updateESPForPlayer(plr)
 			createESPForPlayer(plr)
 		else
 			local obj = espObjects[plr]
+
 			if obj.highlight then
 				pcall(function()
 					obj.highlight.OutlineColor = espColor
@@ -889,6 +979,7 @@ end)
 
 conns.playerRemoving = Players.PlayerRemoving:Connect(function(plr)
 	destroyESPForPlayer(plr)
+
 	local pc = playerConns[plr.UserId]
 	if pc then
 		if pc.charConn then pcall(function() pc.charConn:Disconnect() end) end
@@ -967,8 +1058,9 @@ end)
 espEnabled = false
 espHPEnabled = false
 espNameEnabled = false
-selectedTeamName = "ALL"
-espColor = Color3.fromRGB(255,255,255)
+selectedTeam = nil
+espColor = Color3.fromRGB(255, 255, 255)
+
 RBox.Text = "255"
 GBox.Text = "255"
 BBox.Text = "255"
@@ -985,6 +1077,7 @@ conns.refreshLoop = task.spawn(function()
 		if terminated then break end
 		task.wait(refreshInterval)
 		if terminated then break end
+
 		if espEnabled and not isRefreshing then
 			isRefreshing = true
 			for plr in pairs(espObjects) do
