@@ -428,7 +428,6 @@ end
 local espEnabled = false
 local espHPEnabled = false
 local espNameEnabled = false
-
 local selectedTeam = nil -- nil = ALL
 local espColor = Color3.fromRGB(255, 255, 255)
 
@@ -451,11 +450,15 @@ local teamButtonConns = {}
 local teamWatchConns = {}
 local teamRefreshQueued = false
 
+-- forward declarations
 local updateAllESP
+local updateESPForPlayer
+local createESPForPlayer
 local destroyESPForPlayer
 local rebuildScaleLoop
 local rebuildAllESP
 local buildTeamButtons
+local connectPlayerHandlers
 
 -- ===== UI helpers =====
 local function setButtonState(btn, onText, offText, isOn)
@@ -532,7 +535,7 @@ conns.rConn = RBox.FocusLost:Connect(updateColorFromBoxes)
 conns.gConn = GBox.FocusLost:Connect(updateColorFromBoxes)
 conns.bConn = BBox.FocusLost:Connect(updateColorFromBoxes)
 
--- ===== Team list builder =====
+-- ===== Team helpers =====
 local function clearTeamButtonsKeepTemplate()
 	for _, child in ipairs(Scrolling:GetChildren()) do
 		if child:IsA("TextButton") and child ~= templateAll then
@@ -566,15 +569,6 @@ local function queueTeamRefresh()
 			buildTeamButtons()
 		end
 	end)
-end
-
-updateAllESP = function()
-	if terminated then return end
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer then
-			updateESPForPlayer(plr)
-		end
-	end
 end
 
 buildTeamButtons = function()
@@ -624,7 +618,9 @@ buildTeamButtons = function()
 			SelectTeamFrame.Visible = false
 			Main.Visible = true
 			updateMainUI()
-			updateAllESP()
+            if updateAllESP then
+                updateAllESP()
+            end
 		end)
 
 		teamWatchConns[team] = {
@@ -650,11 +646,15 @@ buildTeamButtons = function()
 		SelectTeamFrame.Visible = false
 		Main.Visible = true
 		updateMainUI()
-		updateAllESP()
+		if updateAllESP then
+            updateAllESP()
+        end
 	end)
 
 	updateMainUI()
-	updateAllESP()
+	if updateAllESP then
+        updateAllESP()
+    end
 end
 
 conns.teamsAdded = TeamsService.ChildAdded:Connect(function()
@@ -730,6 +730,14 @@ local function applyBillboardModeToAll()
 	end
 end
 
+local function getEspPlayerList()
+	local list = {}
+	for plr in pairs(espObjects) do
+		list[#list + 1] = plr
+	end
+	return list
+end
+
 rebuildScaleLoop = function()
 	if scaleLoopConn then
 		scaleLoopConn:Disconnect()
@@ -747,9 +755,9 @@ rebuildScaleLoop = function()
 end
 
 rebuildAllESP = function()
-    for plr, _ in pairs(table.clone(espObjects)) do
-        destroyESPForPlayer(plr)
-    end
+	for _, plr in ipairs(getEspPlayerList()) do
+		destroyESPForPlayer(plr)
+	end
 
 	task.wait(0.03)
 	updateAllESP()
@@ -758,7 +766,7 @@ rebuildAllESP = function()
 end
 
 -- ===== Create / Destroy ESP =====
-local function createESPForPlayer(plr)
+createESPForPlayer = function(plr)
 	if terminated then return end
 	if not plr or not plr.Character then return end
 	if espObjects[plr] then return end
@@ -868,6 +876,7 @@ local function createESPForPlayer(plr)
 	end)
 
 	espObjects[plr] = {
+		character = character,
 		highlight = highlight,
 		billboard = billboard,
 		healthConn = healthConn,
@@ -893,14 +902,22 @@ destroyESPForPlayer = function(plr)
 end
 
 -- ===== Update logic =====
-local function updateESPForPlayer(plr)
+updateESPForPlayer = function(plr)
 	if terminated then return end
 
+	local currentCharacter = plr.Character
+	local existing = espObjects[plr]
+
+	if existing and existing.character ~= currentCharacter then
+		destroyESPForPlayer(plr)
+		existing = nil
+	end
+
 	if shouldShowForPlayer(plr) then
-		if not espObjects[plr] then
+		if not existing then
 			createESPForPlayer(plr)
 		else
-			local obj = espObjects[plr]
+			local obj = existing
 			if obj.highlight then
 				pcall(function()
 					obj.highlight.OutlineColor = espColor
@@ -940,14 +957,23 @@ local function updateESPForPlayer(plr)
 			end
 		end
 	else
-		if espObjects[plr] then
+		if existing then
 			destroyESPForPlayer(plr)
 		end
 	end
 end
 
+updateAllESP = function()
+	if terminated then return end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			updateESPForPlayer(plr)
+		end
+	end
+end
+
 -- ===== Player hooks =====
-local function connectPlayerHandlers(plr)
+connectPlayerHandlers = function(plr)
 	if not plr then return end
 	playerConns[plr.UserId] = playerConns[plr.UserId] or {}
 
@@ -957,6 +983,7 @@ local function connectPlayerHandlers(plr)
 	playerConns[plr.UserId].charConn = plr.CharacterAdded:Connect(function()
 		if terminated then return end
 		task.wait(0.1)
+		destroyESPForPlayer(plr)
 		updateESPForPlayer(plr)
 	end)
 
@@ -1088,7 +1115,7 @@ conns.refreshLoop = task.spawn(function()
 		if espEnabled and not isRefreshing then
 			isRefreshing = true
 
-			for plr in pairs(espObjects) do
+			for _, plr in ipairs(getEspPlayerList()) do
 				destroyESPForPlayer(plr)
 			end
 
@@ -1117,7 +1144,7 @@ if CloseButton and CloseButton.MouseButton1Click then
 			scaleLoopConn = nil
 		end
 
-		for plr in pairs(espObjects) do
+		for _, plr in ipairs(getEspPlayerList()) do
 			destroyESPForPlayer(plr)
 		end
 
