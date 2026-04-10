@@ -568,6 +568,15 @@ local function queueTeamRefresh()
 	end)
 end
 
+updateAllESP = function()
+	if terminated then return end
+	for _, plr in ipairs(Players:GetPlayers()) do
+		if plr ~= LocalPlayer then
+			updateESPForPlayer(plr)
+		end
+	end
+end
+
 buildTeamButtons = function()
 	if terminated then return end
 
@@ -738,9 +747,9 @@ rebuildScaleLoop = function()
 end
 
 rebuildAllESP = function()
-	for plr in pairs(espObjects) do
-		destroyESPForPlayer(plr)
-	end
+    for plr, _ in pairs(table.clone(espObjects)) do
+        destroyESPForPlayer(plr)
+    end
 
 	task.wait(0.03)
 	updateAllESP()
@@ -933,15 +942,6 @@ local function updateESPForPlayer(plr)
 	else
 		if espObjects[plr] then
 			destroyESPForPlayer(plr)
-		end
-	end
-end
-
-updateAllESP = function()
-	if terminated then return end
-	for _, plr in ipairs(Players:GetPlayers()) do
-		if plr ~= LocalPlayer then
-			updateESPForPlayer(plr)
 		end
 	end
 end
