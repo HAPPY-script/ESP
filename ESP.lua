@@ -499,16 +499,24 @@ end
 
 local function parse255(s)
 	local n = tonumber(s)
-	if not n then return 255 end
+
+	if not n then
+		return 0
+	end
+
 	return math.clamp(math.floor(n), 0, 255)
 end
 
 local function updateColorFromBoxes()
 	if terminated then return end
 
-	local r = parse255(RBox.Text)
-	local g = parse255(GBox.Text)
-	local b = parse255(BBox.Text)
+    local r = parse255(RBox.Text)
+    local g = parse255(GBox.Text)
+    local b = parse255(BBox.Text)
+
+    RBox.Text = tostring(r)
+    GBox.Text = tostring(g)
+    BBox.Text = tostring(b)
 	espColor = Color3.fromRGB(r, g, b)
 	ViewColor.BackgroundColor3 = espColor
 
